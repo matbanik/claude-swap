@@ -788,6 +788,172 @@ class TestFetchAccountUsageSessionProfile:
         assert record.sentinel == USAGE_TOKEN_EXPIRED
         mock_fetch.assert_not_called()
 
+    def test_rejected_session_credentials_with_live_session_is_sentinel(
+        self, temp_home: Path
+    ):
+        """A 401 on a live session's credential is the claude having rotated
+        past the copy we read; it renews on its own next call. Recording the
+        401 would back the slot off and probe the endpoint into a 429."""
+        switcher = ClaudeAccountSwitcher()
+        switcher._setup_directories()
+        backup = _oauth_creds("sk-backup", -3600)
+        session = _oauth_creds("sk-session", 7200)
+        switcher._write_account_credentials("2", "test@example.com", backup)
+
+        with patch.object(switcher, "_live_session_pids", return_value=[123]), \
+             patch("claude_swap.session.read_session_credentials",
+                   return_value=session), \
+             patch("claude_swap.oauth.try_fetch_usage_for_account",
+                   return_value=oauth.UsageOutcome(None, error="http-401")):
+            record = switcher._fetch_account_usage(self._info(backup))
+
+        assert record.sentinel == USAGE_TOKEN_EXPIRED
+        assert record.error is None
+        assert record.rejected_fp == oauth.access_token_fingerprint(session)
+        assert switcher.read_account_credentials("2", "test@example.com") == backup
+
+    def test_stamped_session_credential_is_not_requested_again(self, temp_home: Path):
+        """Once refused, the same credential draws no request: the live
+        claude renews it, and only a rotated token is worth asking about."""
+        switcher = ClaudeAccountSwitcher()
+        backup = _oauth_creds("sk-backup", -3600)
+        session = _oauth_creds("sk-session", 7200)
+        stamp = oauth.access_token_fingerprint(session)
+
+        with patch.object(switcher, "_live_session_pids", return_value=[123]), \
+             patch("claude_swap.session.read_session_credentials",
+                   return_value=session), \
+             patch("claude_swap.oauth.try_fetch_usage_for_account") as mock_fetch:
+            record = switcher._fetch_account_usage(self._info(backup), stamp)
+
+        assert record.sentinel == USAGE_TOKEN_EXPIRED
+        mock_fetch.assert_not_called()
+
+    def test_rotated_session_credential_after_a_stamp_is_requested(self, temp_home: Path):
+        switcher = ClaudeAccountSwitcher()
+        backup = _oauth_creds("sk-backup", -3600)
+        session = _oauth_creds("sk-session-2", 7200)
+        stamp = oauth.access_token_fingerprint(_oauth_creds("sk-session", 7200))
+
+        with patch.object(switcher, "_live_session_pids", return_value=[123]), \
+             patch("claude_swap.session.read_session_credentials",
+                   return_value=session), \
+             patch("claude_swap.oauth.try_fetch_usage_for_account",
+                   return_value=oauth.UsageOutcome({"five_hour": {"pct": 3}})) as mock_fetch:
+            record = switcher._fetch_account_usage(self._info(backup), stamp)
+
+        assert record.usage == {"five_hour": {"pct": 3}}
+        mock_fetch.assert_called_once()
+
+    def test_live_session_without_profile_credentials_serves_backup_read_only(
+        self, temp_home: Path
+    ):
+        """No profile credential to read: the backup copy serves, but the live
+        claude owns the family, so no refresh is offered."""
+        switcher = ClaudeAccountSwitcher()
+        backup = _oauth_creds("sk-backup", 7200)
+
+        with patch.object(switcher, "_live_session_pids", return_value=[123]), \
+             patch("claude_swap.session.read_session_credentials",
+                   return_value=None), \
+             patch("claude_swap.oauth.try_fetch_usage_for_account",
+                   return_value=oauth.UsageOutcome({"five_hour": {"pct": 7}})) as mock_fetch:
+            record = switcher._fetch_account_usage(self._info(backup))
+
+        assert record.usage == {"five_hour": {"pct": 7}}
+        args, kwargs = mock_fetch.call_args
+        assert args[2] == backup
+        assert kwargs.get("is_active") is True
+        assert "refresh_via" not in kwargs
+
+    def test_live_session_without_profile_credentials_and_expired_backup_is_sentinel(
+        self, temp_home: Path
+    ):
+        """An expired backup copy under a live session is known refused."""
+        switcher = ClaudeAccountSwitcher()
+        backup = _oauth_creds("sk-backup", -60)
+
+        with patch.object(switcher, "_live_session_pids", return_value=[123]), \
+             patch("claude_swap.session.read_session_credentials",
+                   return_value=None), \
+             patch("claude_swap.oauth.try_fetch_usage_for_account") as mock_fetch:
+            record = switcher._fetch_account_usage(self._info(backup))
+
+        assert record.sentinel == USAGE_TOKEN_EXPIRED
+        mock_fetch.assert_not_called()
+
+    def test_live_session_rejected_backup_is_sentinel(self, temp_home: Path):
+        switcher = ClaudeAccountSwitcher()
+        backup = _oauth_creds("sk-backup", 7200)
+
+        with patch.object(switcher, "_live_session_pids", return_value=[123]), \
+             patch("claude_swap.session.read_session_credentials",
+                   return_value=None), \
+             patch("claude_swap.oauth.try_fetch_usage_for_account",
+                   return_value=oauth.UsageOutcome(None, error="http-401")):
+            record = switcher._fetch_account_usage(self._info(backup))
+
+        assert record.sentinel == USAGE_TOKEN_EXPIRED
+        assert record.error is None
+        assert record.rejected_fp == oauth.access_token_fingerprint(backup)
+
+    def test_stamped_backup_under_live_session_is_not_requested_again(
+        self, temp_home: Path
+    ):
+        switcher = ClaudeAccountSwitcher()
+        backup = _oauth_creds("sk-backup", 7200)
+
+        with patch.object(switcher, "_live_session_pids", return_value=[123]), \
+             patch("claude_swap.session.read_session_credentials",
+                   return_value=None), \
+             patch("claude_swap.oauth.try_fetch_usage_for_account") as mock_fetch:
+            record = switcher._fetch_account_usage(
+                self._info(backup), oauth.access_token_fingerprint(backup)
+            )
+
+        assert record.sentinel == USAGE_TOKEN_EXPIRED
+        mock_fetch.assert_not_called()
+
+    def test_refused_credential_is_requested_once_across_passes(self, temp_home: Path):
+        """The collect pass carries the stamp: a live session whose
+        credential the server refuses costs one request, not one per pass."""
+        switcher = ClaudeAccountSwitcher()
+        switcher._setup_directories()
+        backup = _oauth_creds("sk-backup", -3600)
+        session = _oauth_creds("sk-session", 7200)
+        info = self._info(backup)
+
+        with patch.object(switcher, "_live_session_pids", return_value=[123]), \
+             patch("claude_swap.session.read_session_credentials",
+                   return_value=session), \
+             patch("claude_swap.oauth.try_fetch_usage_for_account",
+                   return_value=oauth.UsageOutcome(None, error="http-401")) as mock_fetch:
+            first = switcher._collect_usage_entries([info])["2"]
+            second = switcher._collect_usage_entries([info])["2"]
+
+        assert first.sentinel == USAGE_TOKEN_EXPIRED
+        assert second.sentinel == USAGE_TOKEN_EXPIRED
+        mock_fetch.assert_called_once()
+
+    def test_live_session_other_errors_keep_their_identity(self, temp_home: Path):
+        """A 429 is the account's budget, not the credential: it must keep
+        pacing the slot exactly as before."""
+        switcher = ClaudeAccountSwitcher()
+        backup = _oauth_creds("sk-backup", 7200)
+
+        with patch.object(switcher, "_live_session_pids", return_value=[123]), \
+             patch("claude_swap.session.read_session_credentials",
+                   return_value=None), \
+             patch("claude_swap.oauth.try_fetch_usage_for_account",
+                   return_value=oauth.UsageOutcome(
+                       None, error="http-429", retry_after_s=3600.0
+                   )):
+            record = switcher._fetch_account_usage(self._info(backup))
+
+        assert record.sentinel is None
+        assert record.error == "http-429"
+        assert record.retry_after_s == 3600.0
+
     def test_expired_session_credentials_without_live_session_falls_back(
         self, temp_home: Path
     ):
@@ -876,6 +1042,25 @@ class TestFetchAccountUsageSessionProfile:
         assert args[2] == backup
         assert kwargs.get("is_active") is False
         assert kwargs.get("refresh_via") is not None  # consume gate replaces persist
+
+    def test_exited_session_rejected_backup_still_refreshes(self, temp_home: Path):
+        """With nobody live the backup is cswap's to refresh: a 401 stays an
+        error for the store's own retry-and-strike accounting."""
+        switcher = ClaudeAccountSwitcher()
+        backup = _oauth_creds("sk-backup", 7200)
+
+        with patch.object(switcher, "_live_session_pids", return_value=[]), \
+             patch("claude_swap.session.read_session_credentials",
+                   return_value=None), \
+             patch("claude_swap.oauth.try_fetch_usage_for_account",
+                   return_value=oauth.UsageOutcome(None, error="http-401")) as mock_fetch:
+            record = switcher._fetch_account_usage(self._info(backup))
+
+        assert record.sentinel is None
+        assert record.error == "http-401"
+        kwargs = mock_fetch.call_args.kwargs
+        assert kwargs.get("is_active") is False
+        assert kwargs.get("refresh_via") is not None
 
     def _write_profile_identity(self, switcher, email: str, org_uuid) -> None:
         session_dir = switcher._session_dir("2", "test@example.com")

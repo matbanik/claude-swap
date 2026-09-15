@@ -1803,6 +1803,11 @@ class TestGuards:
         session_dir = session_dir_for(
             seeded_switcher.backup_dir, ACCOUNT_NUM, ACCOUNT_EMAIL
         )
+        # Unexpired, so the read-only request is made; an expired copy under
+        # a live session is not requested at all.
+        seeded_switcher._write_account_credentials(
+            ACCOUNT_NUM, ACCOUNT_EMAIL, ROTATED_CREDS
+        )
         make_live(session_dir)
         seen: dict[str, bool] = {}
 
@@ -2091,6 +2096,50 @@ class TestReadSessionCredentials:
         )
         creds = session_mod.read_session_credentials(session_dir)
         assert creds is not None and "sk-seed" in creds
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="symlinks are POSIX-only")
+    def test_symlinked_profile_reads_the_target_keychain_entry(
+        self, tmp_path, macos_platform, block_real_keychain
+    ):
+        """A tool that launches claude at a shared directory and leases it to
+        an account through a profile symlink leaves every rotation under the
+        target's hashed name, with the seed at the link's path behind it."""
+        target = tmp_path / "space"
+        target.mkdir()
+        (target / ".credentials.json").write_text(
+            '{"claudeAiOauth": {"accessToken": "sk-stale-seed"}}'
+        )
+        session_dir = tmp_path / "sess"
+        session_dir.symlink_to(target)
+        block_real_keychain.set_password(
+            keychain_service_name(target),
+            session_mod._keychain_account_name(),
+            '{"claudeAiOauth": {"accessToken": "sk-rotated"}}',
+        )
+        creds = session_mod.read_session_credentials(session_dir)
+        assert creds is not None and "sk-rotated" in creds
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="symlinks are POSIX-only")
+    def test_symlinked_profile_prefers_its_own_keychain_entry(
+        self, tmp_path, macos_platform, block_real_keychain
+    ):
+        target = tmp_path / "space"
+        target.mkdir()
+        session_dir = tmp_path / "sess"
+        session_dir.symlink_to(target)
+        account = session_mod._keychain_account_name()
+        block_real_keychain.set_password(
+            keychain_service_name(target),
+            account,
+            '{"claudeAiOauth": {"accessToken": "sk-target"}}',
+        )
+        block_real_keychain.set_password(
+            keychain_service_name(session_dir),
+            account,
+            '{"claudeAiOauth": {"accessToken": "sk-own"}}',
+        )
+        creds = session_mod.read_session_credentials(session_dir)
+        assert creds is not None and "sk-own" in creds
 
 
 ACTIVE_TOKEN = "active-store-token"
