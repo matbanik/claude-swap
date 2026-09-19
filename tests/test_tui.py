@@ -187,10 +187,10 @@ class FakeSwitcher:
         else:
             print(f"Set Account-{identifier} threshold to {threshold:g}%")
 
-    def set_account_backup(self, identifier: str, backup: bool) -> None:
-        self.calls.append(("set_backup", str(identifier), backup))
-        self._replace_policy(identifier, backup=backup)
-        verb = "marked as backup" if backup else "cleared as backup"
+    def set_account_standby(self, identifier: str, standby: bool) -> None:
+        self.calls.append(("set_standby", str(identifier), standby))
+        self._replace_policy(identifier, standby=standby)
+        verb = "marked as standby" if standby else "cleared as standby"
         print(f"Account-{identifier} {verb}")
 
     def set_account_order(self, identifier: str, order: int | None) -> None:

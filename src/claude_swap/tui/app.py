@@ -363,9 +363,9 @@ class CswapApp(App):
             writes.append(
                 partial(self.switcher.set_account_threshold, number, form.threshold)
             )
-        if form.backup != before.backup:
+        if form.standby != before.standby:
             writes.append(
-                partial(self.switcher.set_account_backup, number, form.backup)
+                partial(self.switcher.set_account_standby, number, form.standby)
             )
         if form.order != before.order:
             writes.append(

@@ -1,6 +1,6 @@
 """TUI policy editing — MEU-TUI-01 … MEU-TUI-04.
 
-The per-account policy that ``cswap threshold`` / ``cswap backup`` /
+The per-account policy that ``cswap threshold`` / ``cswap standby`` /
 ``cswap order`` write from the CLI is authored from inside the dashboard too:
 menu → *Per-account policy…* → pick an account → one modal editing all three
 fields at once.
@@ -92,8 +92,8 @@ class TestPolicyForm:
         assert names == {f.name for f in dataclasses.fields(AccountPolicy)}
 
     def test_form_holds_the_cleared_spelling_of_every_field(self):
-        form = PolicyForm(threshold=None, backup=False, order=None)
-        assert (form.threshold, form.backup, form.order) == (None, False, None)
+        form = PolicyForm(threshold=None, standby=False, order=None)
+        assert (form.threshold, form.standby, form.order) == (None, False, None)
 
 
 @pytest.mark.asyncio
@@ -104,12 +104,12 @@ class TestPolicyModal:
         app = make_app(fake)
         async with app.run_test(size=(100, 32)) as pilot:
             await settle(pilot)
-            await open_modal(pilot, _policy(threshold=85.0, backup=True, order=3))
+            await open_modal(pilot, _policy(threshold=85.0, standby=True, order=3))
             from textual.widgets import Checkbox
 
             assert field(pilot, "#threshold").value == "85"
             assert field(pilot, "#order").value == "3"
-            assert pilot.app.screen.query_one("#backup", Checkbox).value is True
+            assert pilot.app.screen.query_one("#standby", Checkbox).value is True
 
     async def test_prefill_keeps_a_fractional_threshold(self, tmp_path):
         """AC-14 — ``:g`` formatting, the same rule ``_policy_badges`` uses:
@@ -133,7 +133,7 @@ class TestPolicyModal:
 
             assert field(pilot, "#threshold").value == ""
             assert field(pilot, "#order").value == ""
-            assert pilot.app.screen.query_one("#backup", Checkbox).value is False
+            assert pilot.app.screen.query_one("#standby", Checkbox).value is False
 
     async def test_empty_input_is_the_modal_spelling_of_unset(self, tmp_path):
         """AC-15 — clearing a field clears the override, the TUI's ``--unset``."""
@@ -148,7 +148,7 @@ class TestPolicyModal:
             await pilot.click("#save")
             await pilot.pause()
             assert seen["form"] == PolicyForm(
-                threshold=None, backup=False, order=None
+                threshold=None, standby=False, order=None
             )
 
     async def test_the_clearing_rule_is_stated_in_the_fields(self, tmp_path):
@@ -252,7 +252,7 @@ class TestPolicyModal:
             await pilot.press("enter")
             await pilot.pause()
             assert seen["form"] == PolicyForm(
-                threshold=85.0, backup=False, order=None
+                threshold=85.0, standby=False, order=None
             )
 
     async def test_the_upper_bounds_are_accepted_not_just_the_middle(
@@ -272,7 +272,7 @@ class TestPolicyModal:
             await pilot.pause()
             assert seen["form"] == PolicyForm(
                 threshold=ACCOUNT_THRESHOLD_MAX,
-                backup=False,
+                standby=False,
                 order=ACCOUNT_ORDER_MAX,
             )
 
@@ -345,7 +345,7 @@ async def edit(pilot, number: str = "2") -> None:
 def check(pilot, value: bool) -> None:
     from textual.widgets import Checkbox
 
-    pilot.app.screen.query_one("#backup", Checkbox).value = value
+    pilot.app.screen.query_one("#standby", Checkbox).value = value
 
 
 async def save(pilot) -> None:
@@ -448,7 +448,7 @@ class TestDoEditPolicy:
     async def test_only_changed_fields_are_written_and_in_a_fixed_order(
         self, tmp_path
     ):
-        """AC-22 — threshold, then backup, then order."""
+        """AC-22 — threshold, then standby, then order."""
         fake = FakeSwitcher(
             [make_account(1, active=True), make_account(2)], tmp_path
         )
@@ -462,7 +462,7 @@ class TestDoEditPolicy:
             await save(pilot)
             assert fake.calls == [
                 ("set_threshold", "2", 70.0),
-                ("set_backup", "2", True),
+                ("set_standby", "2", True),
                 ("set_order", "2", 2),
             ]
 
@@ -472,7 +472,7 @@ class TestDoEditPolicy:
         fake = FakeSwitcher(
             [
                 make_account(1, active=True),
-                make_account(2, policy=_policy(threshold=85.0, backup=True)),
+                make_account(2, policy=_policy(threshold=85.0, standby=True)),
             ],
             tmp_path,
         )
@@ -509,7 +509,7 @@ class TestDoEditPolicy:
         fake = FakeSwitcher(
             [
                 make_account(1, active=True),
-                make_account(2, policy=_policy(threshold=85.0, backup=True, order=3)),
+                make_account(2, policy=_policy(threshold=85.0, standby=True, order=3)),
             ],
             tmp_path,
         )
@@ -535,7 +535,7 @@ class TestDoEditPolicy:
         fake = FakeSwitcher(
             [
                 make_account(1, active=True),
-                make_account(2, policy=_policy(threshold=85.0, backup=True, order=3)),
+                make_account(2, policy=_policy(threshold=85.0, standby=True, order=3)),
             ],
             tmp_path,
         )
@@ -632,7 +632,7 @@ class TestDoEditPolicy:
         from claude_swap.tui.modals import OutputModal
 
         class Exploding(FakeSwitcher):
-            def set_account_backup(self, identifier: str, backup: bool) -> None:
+            def set_account_standby(self, identifier: str, standby: bool) -> None:
                 raise ClaudeSwitchError("store is read-only")
 
         fake = Exploding(
@@ -892,7 +892,7 @@ class TestEndToEnd:
             assert fake.calls == [("set_order", "2", 2)]
 
     async def test_marking_a_reserve_end_to_end(self, tmp_path):
-        """AC-37 — the same route for ``backup``, toggled with space because
+        """AC-37 — the same route for ``standby``, toggled with space because
         that is the key the checkbox already answers to."""
         from textual.widgets import Checkbox
 
@@ -903,12 +903,12 @@ class TestEndToEnd:
         async with app.run_test(size=(100, 32)) as pilot:
             await settle(pilot)
             await open_from_menu(pilot)
-            app.screen.query_one("#backup", Checkbox).focus()
+            app.screen.query_one("#standby", Checkbox).focus()
             await pilot.pause()
             await pilot.press("space")
             await pilot.click("#save")
             await settle(pilot)
-            assert fake.calls == [("set_backup", "2", True)]
+            assert fake.calls == [("set_standby", "2", True)]
 
     async def test_clearing_a_threshold_end_to_end(self, tmp_path):
         """AC-37 — deleting the text is the TUI's ``--unset``, and the badge

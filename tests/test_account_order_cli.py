@@ -281,9 +281,9 @@ class TestTheSubcommandMapIsDeliberatelyUntouched(OrderCliBase):
     def test_neither_is_threshold_the_verb_it_mirrors(self):
         assert "threshold" not in cli._SUBCOMMAND_FLAGS
 
-    def test_backup_still_is_because_it_is_not_pre_dispatched(self):
+    def test_standby_still_is_because_it_is_not_pre_dispatched(self):
         """The control: the map is not simply empty of policy verbs."""
-        assert cli._SUBCOMMAND_FLAGS["backup"] == "--backup-account"
+        assert cli._SUBCOMMAND_FLAGS["standby"] == "--standby-account"
 
 
 class TestIdentifierForms(OrderCliBase):
@@ -419,7 +419,7 @@ class TestBareOrderListsTheChain(OrderCliBase):
 
 
 class TestJsonRowCarriesTheOrder(OrderCliBase):
-    """AC-38 - omit-when-default, exactly as `threshold` and `backup` are."""
+    """AC-38 - omit-when-default, exactly as `threshold` and `standby` are."""
 
     def test_a_pinned_row_gains_the_key(self):
         from claude_swap.json_output import account_row
@@ -461,9 +461,9 @@ class TestJsonRowCarriesTheOrder(OrderCliBase):
 
         row = account_row(
             2, "a@example.test", "", "", False, None,
-            policy=AccountPolicy(threshold=85.0, backup=True, order=3),
+            policy=AccountPolicy(threshold=85.0, standby=True, order=3),
         )
-        assert (row["threshold"], row["backup"], row["order"]) == (85.0, True, 3)
+        assert (row["threshold"], row["standby"], row["order"]) == (85.0, True, 3)
 
     def test_the_stored_type_survives_serialisation(self):
         from claude_swap.json_output import account_row

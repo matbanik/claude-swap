@@ -5,9 +5,9 @@ MEU-PAP-05 - AC-33 ... AC-38 of
 
 `cswap threshold` mirrors `_alias_command` (pre-dispatched before the main
 parser, because the main parser's required mutually-exclusive group cannot hold
-a positional subcommand). `cswap backup` / `cswap unbackup` mirror
+a positional subcommand). `cswap standby` / `cswap unstandby` mirror
 `disable`/`enable`: a `_SUBCOMMAND_FLAGS` entry expanding to
-`--backup-account` / `--unbackup-account`, so both the memorable verb and the
+`--standby-account` / `--unstandby-account`, so both the memorable verb and the
 long-standing flag spelling work.
 
 The validation contract is AGENTS.md §Boundary Input Contract: an out-of-range
@@ -177,40 +177,40 @@ class TestThresholdListing(PolicyCliBase):
         assert "90" in out, "the global default is still worth printing"
 
 
-class TestBackupVerbs(PolicyCliBase):
-    """AC-36 - `cswap backup` / `cswap unbackup` set and clear `record["backup"]`."""
+class TestStandbyVerbs(PolicyCliBase):
+    """AC-36 - `cswap standby` / `cswap unstandby` set and clear `record["standby"]`."""
 
-    def test_backup_sets_the_flag(self, temp_home: Path, capsys):
+    def test_standby_sets_the_flag(self, temp_home: Path, capsys):
         self._fleet(temp_home)
-        self._main(["backup", "3"])
-        assert self._record(ClaudeAccountSwitcher(), "3")["backup"] is True
+        self._main(["standby", "3"])
+        assert self._record(ClaudeAccountSwitcher(), "3")["standby"] is True
 
-    def test_unbackup_clears_the_flag(self, temp_home: Path, capsys):
+    def test_unstandby_clears_the_flag(self, temp_home: Path, capsys):
         self._fleet(temp_home)
-        self._main(["backup", "3"])
-        self._main(["unbackup", "3"])
-        assert "backup" not in self._record(ClaudeAccountSwitcher(), "3")
+        self._main(["standby", "3"])
+        self._main(["unstandby", "3"])
+        assert "standby" not in self._record(ClaudeAccountSwitcher(), "3")
 
     def test_the_legacy_flag_spelling_works_too(self, temp_home: Path, capsys):
-        """`--backup-account` mirrors `--disable-account`; the memorable verb is
+        """`--standby-account` mirrors `--disable-account`; the memorable verb is
         a `_SUBCOMMAND_FLAGS` rewrite of it, so both must reach the same code."""
         self._fleet(temp_home)
-        self._main(["--backup-account", "3"])
-        assert self._record(ClaudeAccountSwitcher(), "3")["backup"] is True
-        self._main(["--unbackup-account", "3"])
-        assert "backup" not in self._record(ClaudeAccountSwitcher(), "3")
+        self._main(["--standby-account", "3"])
+        assert self._record(ClaudeAccountSwitcher(), "3")["standby"] is True
+        self._main(["--unstandby-account", "3"])
+        assert "standby" not in self._record(ClaudeAccountSwitcher(), "3")
 
-    def test_backup_with_no_argument_exits_nonzero(self, temp_home: Path, capsys):
+    def test_standby_with_no_argument_exits_nonzero(self, temp_home: Path, capsys):
         self._fleet(temp_home)
         with pytest.raises(SystemExit) as exc:
-            self._main(["backup"])
+            self._main(["standby"])
         assert exc.value.code != 0
 
     def test_the_flag_is_registered_in_the_subcommand_table(self):
         """The verb must be a table entry, not a special case - that is what
         keeps token pass-through working the way `disable` does."""
-        assert cli._SUBCOMMAND_FLAGS["backup"] == "--backup-account"
-        assert cli._SUBCOMMAND_FLAGS["unbackup"] == "--unbackup-account"
+        assert cli._SUBCOMMAND_FLAGS["standby"] == "--standby-account"
+        assert cli._SUBCOMMAND_FLAGS["unstandby"] == "--unstandby-account"
 
 
 class TestIdentifierResolution(PolicyCliBase):
@@ -227,16 +227,16 @@ class TestIdentifierResolution(PolicyCliBase):
         self._threshold(["dev", "85"])
         assert self._record(ClaudeAccountSwitcher(), "2")["threshold"] == 85.0
 
-    def test_backup_accepts_an_email(self, temp_home: Path, capsys):
+    def test_standby_accepts_an_email(self, temp_home: Path, capsys):
         self._fleet(temp_home)
-        self._main(["backup", "account-3@example.test"])
-        assert self._record(ClaudeAccountSwitcher(), "3")["backup"] is True
+        self._main(["standby", "account-3@example.test"])
+        assert self._record(ClaudeAccountSwitcher(), "3")["standby"] is True
 
-    def test_backup_accepts_an_alias(self, temp_home: Path, capsys):
+    def test_standby_accepts_an_alias(self, temp_home: Path, capsys):
         s = self._fleet(temp_home)
         self._alias(s, "3", "spare")
-        self._main(["backup", "spare"])
-        assert self._record(ClaudeAccountSwitcher(), "3")["backup"] is True
+        self._main(["standby", "spare"])
+        assert self._record(ClaudeAccountSwitcher(), "3")["standby"] is True
 
     def test_an_unresolvable_identifier_exits_nonzero(self, temp_home: Path, capsys):
         s = self._fleet(temp_home)
@@ -246,13 +246,13 @@ class TestIdentifierResolution(PolicyCliBase):
         assert exc.value.code != 0
         assert self._bytes(s) == before
 
-    def test_an_unresolvable_identifier_exits_nonzero_for_backup_too(
+    def test_an_unresolvable_identifier_exits_nonzero_for_standby_too(
         self, temp_home: Path, capsys
     ):
         s = self._fleet(temp_home)
         before = self._bytes(s)
         with pytest.raises(SystemExit) as exc:
-            self._main(["backup", "nobody@example.test"])
+            self._main(["standby", "nobody@example.test"])
         assert exc.value.code != 0
         assert self._bytes(s) == before
 

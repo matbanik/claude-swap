@@ -189,7 +189,7 @@ class TestAccountPolicyOrderField:
         """
         policy = AccountPolicy()
         assert policy.threshold is None
-        assert policy.backup is False
+        assert policy.standby is False
         assert policy.order is None
         assert dataclasses.astuple(policy) == (None, False, None)
 
@@ -214,12 +214,12 @@ class TestAccountPolicyOrderField:
         assert fields["order"].default is None
 
     def test_order_is_last_so_positional_callers_are_unaffected(self):
-        """PR 1 built `AccountPolicy(threshold, backup)` positionally in places.
+        """PR 1 built `AccountPolicy(threshold, standby)` positionally in places.
         Appending rather than inserting keeps every one of those sites correct."""
         names = [f.name for f in dataclasses.fields(AccountPolicy)]
-        assert names == ["threshold", "backup", "order"]
+        assert names == ["threshold", "standby", "order"]
         assert AccountPolicy(85.0, True, 2) == AccountPolicy(
-            threshold=85.0, backup=True, order=2
+            threshold=85.0, standby=True, order=2
         )
 
 

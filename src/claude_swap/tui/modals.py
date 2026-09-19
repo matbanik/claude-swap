@@ -179,7 +179,7 @@ class PolicyForm:
     """
 
     threshold: float | None
-    backup: bool
+    standby: bool
     order: int | None
 
 
@@ -237,9 +237,9 @@ class PolicyModal(ModalScreen["PolicyForm | None"]):
                 id="order",
             )
             yield Checkbox(
-                "last man standing (backup)",
-                value=self._policy.backup,
-                id="backup",
+                "last man standing (standby)",
+                value=self._policy.standby,
+                id="standby",
             )
             yield Static("", id="form-error", classes="form-error")
             with Horizontal(classes="modal-buttons"):
@@ -286,7 +286,7 @@ class PolicyModal(ModalScreen["PolicyForm | None"]):
         self.dismiss(
             PolicyForm(
                 threshold=threshold,
-                backup=self.query_one("#backup", Checkbox).value,
+                standby=self.query_one("#standby", Checkbox).value,
                 order=order,
             )
         )

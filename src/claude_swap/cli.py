@@ -64,8 +64,8 @@ _SUBCOMMAND_FLAGS = {
     "rm": "--remove-account",
     "disable": "--disable-account",
     "enable": "--enable-account",
-    "backup": "--backup-account",
-    "unbackup": "--unbackup-account",
+    "standby": "--standby-account",
+    "unstandby": "--unstandby-account",
     "export": "--export",
     "import": "--import",
     "purge": "--purge",
@@ -704,7 +704,7 @@ def _order_command(argv: list[str]) -> None:
 
     Deliberately absent from `_SUBCOMMAND_FLAGS`: pre-dispatch above runs
     before `_translate_subcommand`, so an entry would be unreachable. The long
-    flags exist on the main parser instead, the same way `--backup-account`
+    flags exist on the main parser instead, the same way `--standby-account`
     does, and both spellings write the same bytes.
     """
     parser = argparse.ArgumentParser(
@@ -1316,8 +1316,8 @@ Commands:
   %(prog)s remove <num|email>         remove an account
   %(prog)s disable <num|email>        hold an account out of auto-rotation
   %(prog)s enable <num|email>         return a disabled account to rotation
-  %(prog)s backup <num|email>         hold an account back as a last resort
-  %(prog)s unbackup <num|email>       return a backup account to rotation
+  %(prog)s standby <num|email>        hold an account back as a last resort
+  %(prog)s unstandby <num|email>      return a standby account to rotation
   %(prog)s threshold <num|email> <pct>  set one account's switch-away point
   %(prog)s threshold <num|email> --unset  clear it (use the global default)
   %(prog)s threshold                  list the global default and overrides
@@ -1497,19 +1497,19 @@ The original flag spellings (%(prog)s --switch, %(prog)s --list, ...) keep worki
         help=argparse.SUPPRESS,
     )
     group.add_argument(
-        "--backup-account",
+        "--standby-account",
         metavar="NUM|EMAIL",
         help=argparse.SUPPRESS,
     )
     group.add_argument(
-        "--unbackup-account",
+        "--unstandby-account",
         metavar="NUM|EMAIL",
         help=argparse.SUPPRESS,
     )
     # Two-argument, unlike every other account flag, because a pin is a
     # (who, where) pair. The verb form `cswap order` is the documented
     # spelling; these exist so the long-flag interface stays complete,
-    # the way `--backup-account` mirrors `cswap backup`.
+    # the way `--standby-account` mirrors `cswap standby`.
     group.add_argument(
         "--order-account",
         nargs=2,
@@ -1604,8 +1604,8 @@ The original flag spellings (%(prog)s --switch, %(prog)s --list, ...) keep worki
         or args.remove_account is not None
         or args.disable_account is not None
         or args.enable_account is not None
-        or args.backup_account is not None
-        or args.unbackup_account is not None
+        or args.standby_account is not None
+        or args.unstandby_account is not None
         or args.order_account is not None
         or args.unorder_account is not None
         or args.switch_to is not None
@@ -1704,10 +1704,10 @@ The original flag spellings (%(prog)s --switch, %(prog)s --list, ...) keep worki
             switcher.set_account_disabled(args.disable_account, True)
         elif args.enable_account is not None:
             switcher.set_account_disabled(args.enable_account, False)
-        elif args.backup_account is not None:
-            switcher.set_account_backup(args.backup_account, True)
-        elif args.unbackup_account is not None:
-            switcher.set_account_backup(args.unbackup_account, False)
+        elif args.standby_account is not None:
+            switcher.set_account_standby(args.standby_account, True)
+        elif args.unstandby_account is not None:
+            switcher.set_account_standby(args.unstandby_account, False)
         elif args.order_account is not None:
             _set_order_or_exit(switcher, *args.order_account)
         elif args.unorder_account is not None:

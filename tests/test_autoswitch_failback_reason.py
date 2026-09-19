@@ -46,9 +46,9 @@ from unittest.mock import patch
 import pytest
 
 from claude_swap.autoswitch import ErrorEvent, NoSwitchEvent, TickOutcome
-from tests.test_autoswitch_backup_accounts import (
+from tests.test_autoswitch_standby_accounts import (
     BASE_CALLS,
-    _backup,
+    _standby,
     _details,
     _fleet,
     _reasons,
@@ -90,7 +90,7 @@ def _post_loop_hold(temp_home):
     AC-29's silent-error-leg assertion as well.
     """
     h = _fleet(temp_home, n=2)
-    _backup(h, 1)
+    _standby(h, 1)
     with patch.object(h.engine, "_freshen_target", return_value="transient"):
         outcome, _mock = _tick(h, [{"1": _u(20.0), "2": _u(10.0)}])
     return h, outcome
@@ -115,14 +115,14 @@ class TestFailbackHoldHasItsOwnReason:
         primary has no readable usage, so ranking returns nothing.
 
         Borrowed verbatim from PR 1's placement oracle
-        (`test_autoswitch_backup_accounts.py`
+        (`test_autoswitch_standby_accounts.py`
         `::test_f_unreadable_primaries_hold_rather_than_report_no_comparison`)
         because that fixture is already proven to land on this arm rather than
         on `no-comparison` - the arm sits ABOVE `if not any_known:` precisely
         so that it does.
         """
         h = _fleet(temp_home, n=2)
-        _backup(h, 1)
+        _standby(h, 1)
         outcome, _ = _tick(h, [{"1": _u(20.0), "2": None}])
         return h, outcome
 
@@ -171,14 +171,14 @@ class TestOnlyTheStringChanges:
 
     def test_the_outcome_is_still_no_action(self, temp_home):
         h = _fleet(temp_home, n=2)
-        _backup(h, 1)
+        _standby(h, 1)
         outcome, _ = _tick(h, [{"1": _u(20.0), "2": None}])
         assert outcome is TickOutcome.NO_ACTION
         assert outcome is not TickOutcome.BLOCKED
 
     def test_no_switch_is_performed(self, temp_home):
         h = _fleet(temp_home, n=2)
-        _backup(h, 1)
+        _standby(h, 1)
         _tick(h, [{"1": _u(20.0), "2": None}])
         assert _switches(h) == []
 
@@ -227,7 +227,7 @@ class TestBothHoldSitesEmitIt:
     def test_site_one_the_unranked_arm(self, temp_home):
         """**M-4's oracle.**"""
         h = _fleet(temp_home, n=2)
-        _backup(h, 1)
+        _standby(h, 1)
         outcome, _ = _tick(h, [{"1": _u(20.0), "2": None}])
         assert outcome is TickOutcome.NO_ACTION
         assert _reasons(h) == [FAILBACK_REASON]
@@ -256,7 +256,7 @@ class TestBothHoldSitesEmitIt:
         after the loop, so it must have.
         """
         one = _fleet(temp_home, n=2)
-        _backup(one, 1)
+        _standby(one, 1)
         _tick(one, [{"1": _u(20.0), "2": None}])
         assert _reasons(one) == [FAILBACK_REASON]
         assert len(_reasons(one)) == 1
@@ -325,7 +325,7 @@ class TestTheOrdinaryHoldIsUnchanged:
         the failback path would pass the no-reserve tests and fail here.
         """
         h = _fleet(temp_home, n=3)
-        _backup(h, 3)
+        _standby(h, 3)
         outcome, _ = _tick(h, [{
             "1": _u(88.0), "2": _u(85.0), "3": _u(1.0),
         }])

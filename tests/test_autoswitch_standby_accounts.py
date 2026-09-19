@@ -1,4 +1,4 @@
-"""MEU-PAP-04 - backup ("last man standing") accounts and the `failback` trigger.
+"""MEU-PAP-04 - standby ("last man standing") accounts and the `failback` trigger.
 
 Covers AC-24..AC-32 (the two-pass candidate filter) plus AC-43..AC-46 and
 AC-48..AC-52 (failback).
@@ -96,9 +96,9 @@ def _stale(pct: float, now: float, age: float = 240.0) -> UsageEntry:
     )
 
 
-def _backup(h: EngineHarness, *nums: int) -> None:
+def _standby(h: EngineHarness, *nums: int) -> None:
     for num in nums:
-        h.switcher.set_account_backup(str(num), True)
+        h.switcher.set_account_standby(str(num), True)
 
 
 def _api_key(h: EngineHarness, *nums: int) -> None:
@@ -152,10 +152,10 @@ def _tick(h: EngineHarness, snapshots: list[dict]):
         return h.engine.tick(), mock
 
 
-class TestBackupIsNeverPreferred:
-    """AC-24 - a backup account is skipped while any non-backup qualifies.
+class TestStandbyIsNeverPreferred:
+    """AC-24 - a standby account is skipped while any non-standby qualifies.
 
-    The fixture deliberately makes the backup the *most* attractive account on
+    The fixture deliberately makes the standby the *most* attractive account on
     both ranking axes - strictly more headroom and a sooner reset - because
     that is the case an `order: 999` sort-key implementation gets wrong: under
     `best` and `consume-first` the order field is not the sort key, so the
@@ -163,9 +163,9 @@ class TestBackupIsNeverPreferred:
     that way; a sort tweak can.
     """
 
-    def test_the_backup_loses_to_a_worse_non_backup_candidate(self, temp_home):
+    def test_the_standby_loses_to_a_worse_non_standby_candidate(self, temp_home):
         h = _fleet(temp_home)
-        _backup(h, 3)
+        _standby(h, 3)
         t = h.clock.now
         outcome, _ = _tick(h, [{
             "1": _u(95.0, seven_day_reset=t + 100_000),
@@ -189,12 +189,12 @@ class TestBackupIsNeverPreferred:
         assert h.active_number() == 3
 
 
-class TestBackupIsPromotedWhenNothingElseQualifies:
+class TestStandbyIsPromotedWhenNothingElseQualifies:
     """AC-25 - the reserve is offered once no primary can be landed on."""
 
-    def test_a_primary_at_its_limit_promotes_the_backup(self, temp_home):
+    def test_a_primary_at_its_limit_promotes_the_standby(self, temp_home):
         h = _fleet(temp_home)
-        _backup(h, 3)
+        _standby(h, 3)
         outcome, _ = _tick(h, [{
             "1": _usage(95.0),   # active, above the line -> proactive
             "2": _usage(100.0),  # primary at its own limit -> never a target
@@ -208,7 +208,7 @@ class TestBackupIsPromotedWhenNothingElseQualifies:
         """AC-28, positive half - the fleet is not exhausted while the
         reserve has quota, so the census must stay on the full OAuth set."""
         h = _fleet(temp_home)
-        _backup(h, 3)
+        _standby(h, 3)
         outcome, _ = _tick(h, [{
             "1": _usage(95.0), "2": _usage(100.0), "3": _usage(5.0),
         }])
@@ -227,11 +227,11 @@ class TestExhaustionCensusStaysOnTheFullSet:
     **event**, not the outcome.
     """
 
-    def test_a_spent_primary_plus_a_live_backup_is_not_all_exhausted(
+    def test_a_spent_primary_plus_a_live_standby_is_not_all_exhausted(
         self, temp_home
     ):
         h = _fleet(temp_home)
-        _backup(h, 3)
+        _standby(h, 3)
         outcome, _ = _tick(h, [{
             "1": _usage(95.0),   # active, 5 points
             "2": _usage(100.0),  # spent primary
@@ -244,18 +244,18 @@ class TestExhaustionCensusStaysOnTheFullSet:
         assert not [e for e in h.events if isinstance(e, AllExhaustedEvent)]
 
 
-class TestAnAllBackupFleetStillSwitches:
+class TestAnAllStandbyFleetStillSwitches:
     """AC-26 - degrade to "use them" rather than emitting `no-candidates`.
 
     Held-out-forever is the wrong failure mode: a user who marks every account
-    backup has expressed a preference, not a prohibition.
+    standby has expressed a preference, not a prohibition.
     """
 
-    def test_every_candidate_marked_backup_still_produces_a_switch(
+    def test_every_candidate_marked_standby_still_produces_a_switch(
         self, temp_home
     ):
         h = _fleet(temp_home)
-        _backup(h, 2, 3)
+        _standby(h, 2, 3)
         outcome, _ = _tick(h, [{
             "1": _usage(95.0), "2": _usage(50.0), "3": _usage(10.0),
         }])
@@ -267,19 +267,19 @@ class TestAnAllBackupFleetStillSwitches:
 class TestAllAboveIsComputedOverPrimariesOnly:
     """AC-27 - pass 1's `all_above` census excludes the reserve.
 
-    "Every non-backup account is above its own threshold" is the condition
+    "Every non-standby account is above its own threshold" is the condition
     that should promote a reserve, and it is *not* "every account is above".
-    A fresh backup inside the census makes `all_above` false, which re-arms
+    A fresh standby inside the census makes `all_above` false, which re-arms
     the landing gate against a spent primary fleet and hands the tick to the
     reserve - the opposite of the policy, since a primary is still workable
     through its imminent reset.
     """
 
-    def test_a_fresh_backup_does_not_suppress_the_recovery_path(
+    def test_a_fresh_standby_does_not_suppress_the_recovery_path(
         self, temp_home
     ):
         h = _fleet(temp_home, n=4)
-        _backup(h, 4)
+        _standby(h, 4)
         t = h.clock.now
         outcome, _ = _tick(h, [{
             # Active and both primaries above the global line -> all_above is
@@ -291,7 +291,7 @@ class TestAllAboveIsComputedOverPrimariesOnly:
             "4": _u(5.0, five_hour_reset=t + 300),
         }])
         assert outcome is TickOutcome.SWITCHED
-        # With the backup counted in the census `all_above` is False, the
+        # With the standby counted in the census `all_above` is False, the
         # landing gate rejects both primaries, and the tick lands on 4.
         assert h.active_number() == 2
         assert _triggers(h) == ["proactive"]
@@ -311,7 +311,7 @@ class TestTwoPassAppliesInBothCommitPhases:
         self, temp_home
     ):
         h = _fleet(temp_home, strategy="consume-first")
-        _backup(h, 3)
+        _standby(h, 3)
         t = h.clock.now
         stale = {
             "1": _u(50.0, seven_day_reset=t + 100_000),
@@ -330,17 +330,17 @@ class TestTwoPassAppliesInBothCommitPhases:
         assert _triggers(h) == ["consume-first"]
 
 
-class TestApiKeyLastResortPrefersNonBackup:
+class TestApiKeyLastResortPrefersNonStandby:
     """AC-30 - the same filter, mirrored onto the last-resort list.
 
     PR #260 proved the API-key hole is real rather than theoretical: an
     asymmetry here means a fleet with one metered reserve burns it first.
     """
 
-    def test_a_non_backup_api_key_account_wins(self, temp_home):
+    def test_a_non_standby_api_key_account_wins(self, temp_home):
         h = _fleet(temp_home, include_api_key_accounts=True)
         _api_key(h, 2, 3)
-        _backup(h, 2)
+        _standby(h, 2)
         outcome, _ = _tick(h, [{
             "1": _usage(95.0), "2": _usage(10.0), "3": _usage(10.0),
         }])
@@ -348,31 +348,31 @@ class TestApiKeyLastResortPrefersNonBackup:
         # Sequence order would take 2; the filter takes 3.
         assert h.active_number() == 3
 
-    def test_a_backup_api_key_account_is_used_when_it_is_the_only_one(
+    def test_a_standby_api_key_account_is_used_when_it_is_the_only_one(
         self, temp_home
     ):
         h = _fleet(temp_home, n=2, include_api_key_accounts=True)
         _api_key(h, 2)
-        _backup(h, 2)
+        _standby(h, 2)
         outcome, _ = _tick(h, [{"1": _usage(95.0), "2": _usage(10.0)}])
         assert outcome is TickOutcome.SWITCHED
         assert h.active_number() == 2
 
 
-class TestDisabledWinsOverBackup:
+class TestDisabledWinsOverStandby:
     """AC-31 - `disabled` is applied first in `switchable_account_numbers()`,
     so a slot marked both appears in neither pass."""
 
-    def test_a_disabled_backup_is_absent_from_the_backup_set(self, temp_home):
+    def test_a_disabled_standby_is_absent_from_the_standby_set(self, temp_home):
         h = _fleet(temp_home)
         h.switcher.set_account_disabled("2", True)
-        _backup(h, 2)
-        assert "2" not in h.switcher.backup_account_numbers()
+        _standby(h, 2)
+        assert "2" not in h.switcher.standby_account_numbers()
 
-    def test_a_disabled_backup_is_not_promoted_in_pass_two(self, temp_home):
+    def test_a_disabled_standby_is_not_promoted_in_pass_two(self, temp_home):
         h = _fleet(temp_home)
         h.switcher.set_account_disabled("2", True)
-        _backup(h, 2, 3)
+        _standby(h, 2, 3)
         outcome, _ = _tick(h, [{
             "1": _usage(95.0), "2": _usage(1.0), "3": _usage(10.0),
         }])
@@ -382,16 +382,16 @@ class TestDisabledWinsOverBackup:
 
 
 class TestDefaultIdentity:
-    """AC-32 - with nothing marked backup the engine is bit-identical.
+    """AC-32 - with nothing marked standby the engine is bit-identical.
 
     The whole-suite proof is the MEU gate's `git diff tests/test_autoswitch.py`
     being empty while that file passes unchanged; these two assert the local
     half - no reserve exists, and no new trigger string is emitted.
     """
 
-    def test_a_fresh_fleet_has_no_backup_accounts(self, temp_home):
+    def test_a_fresh_fleet_has_no_standby_accounts(self, temp_home):
         h = _fleet(temp_home)
-        assert h.switcher.backup_account_numbers() == []
+        assert h.switcher.standby_account_numbers() == []
 
     def test_selection_and_trigger_are_unchanged(self, temp_home):
         h = _fleet(temp_home)
@@ -405,7 +405,7 @@ class TestDefaultIdentity:
 
 
 class TestFailbackUnderBest:
-    """AC-43 - a backup running as active departs for a healthy primary even
+    """AC-43 - a standby running as active departs for a healthy primary even
     though the comparative gates would refuse the move.
 
     This is the whole point of the trigger. The reserve was taken because
@@ -417,7 +417,7 @@ class TestFailbackUnderBest:
 
     def _stage(self, temp_home):
         h = _fleet(temp_home, n=2)
-        _backup(h, 1)
+        _standby(h, 1)
         h.switcher.set_account_threshold("2", 85.0)
         h.engine = h._make_engine()
         return h
@@ -446,7 +446,7 @@ class TestFailbackUnderConsumeFirst:
     The negative half is the reference implementation: today's engine, with no
     reserve marked, refuses exactly this move. That is why this AC has no
     named mutant in the discrimination gate - the unmodified engine *is* the
-    mutant, and the two halves differ only by `set_account_backup`.
+    mutant, and the two halves differ only by `set_account_standby`.
     """
 
     def _snapshot(self, h):
@@ -458,7 +458,7 @@ class TestFailbackUnderConsumeFirst:
 
     def test_failback_overrides_the_soonest_reset_filter(self, temp_home):
         h = _fleet(temp_home, n=2, strategy="consume-first")
-        _backup(h, 1)
+        _standby(h, 1)
         outcome, _ = _tick(h, [self._snapshot(h)])
         assert outcome is TickOutcome.SWITCHED
         assert h.active_number() == 2
@@ -483,7 +483,7 @@ class TestFailbackDoesNotOscillate:
 
     def test_four_quiet_ticks_produce_exactly_one_switch(self, temp_home):
         h = _fleet(temp_home, n=2)
-        _backup(h, 1)
+        _standby(h, 1)
         h.switcher.set_account_threshold("2", 85.0)
         h.engine = h._make_engine()
         snap = {"1": _u(20.0), "2": _u(70.0)}
@@ -508,7 +508,7 @@ class TestFailbackDoesNotOscillate:
         correct code. Hence a 50% line and a 55% active rather than 95%.
         """
         h = _fleet(temp_home, n=2)
-        _backup(h, 1)
+        _standby(h, 1)
         h.switcher.set_account_threshold("2", 50.0)
         h.engine = h._make_engine()
         reserve_row = _u(20.0)
@@ -544,7 +544,7 @@ class TestFailbackDoesNotOscillate:
         out by the guard and the tick lands on 3 instead.
         """
         h = _fleet(temp_home)
-        _backup(h, 1)
+        _standby(h, 1)
         h.engine._mutate_state(lambda s: s.update(
             lastSwitchFrom="2",
             lastSwitchTo="1",
@@ -563,7 +563,7 @@ class TestFailbackDoesNotOscillate:
 class TestFailbackTriggerScope:
     """AC-46 - the predicate is store-only and narrow.
 
-    It reads `backup`, `disabled`, `kind` and the quarantine set - never a
+    It reads `standby`, `disabled`, `kind` and the quarantine set - never a
     usage number - so it is decidable at the departure gate before any
     ranking. Each sub-case below removes exactly one conjunct and asserts the
     tick collapses back to today's behaviour.
@@ -580,7 +580,7 @@ class TestFailbackTriggerScope:
 
     def test_b_the_active_account_is_not_the_reserve(self, temp_home):
         h = _fleet(temp_home)
-        _backup(h, 2)
+        _standby(h, 2)
         outcome, _ = _tick(h, [{
             "1": _u(20.0), "2": _u(10.0), "3": _u(10.0),
         }])
@@ -590,7 +590,7 @@ class TestFailbackTriggerScope:
 
     def test_c_every_account_is_a_reserve(self, temp_home):
         h = _fleet(temp_home, n=2)
-        _backup(h, 1, 2)
+        _standby(h, 1, 2)
         outcome, _ = _tick(h, [{"1": _u(20.0), "2": _u(10.0)}])
         assert outcome is TickOutcome.NO_ACTION
         assert _reasons(h) == ["below-threshold"]
@@ -598,7 +598,7 @@ class TestFailbackTriggerScope:
 
     def test_c_the_only_primary_is_quarantined(self, temp_home):
         h = _fleet(temp_home, n=2)
-        _backup(h, 1)
+        _standby(h, 1)
         h.engine._quarantine("2", _EMAILS[2], "invalid_grant")
         h.events.clear()
         outcome, _ = _tick(h, [{"1": _u(20.0), "2": _u(10.0)}])
@@ -615,7 +615,7 @@ class TestFailbackTriggerScope:
         reserve is its only OAuth account.
         """
         h = _fleet(temp_home, n=2)
-        _backup(h, 1)
+        _standby(h, 1)
         _api_key(h, 2)
         outcome, _ = _tick(h, [{"1": _u(20.0), "2": _u(10.0)}])
         assert outcome is TickOutcome.NO_ACTION
@@ -630,7 +630,7 @@ class TestFailbackTriggerScope:
         gate, so `:1174`'s `no-candidates` exit is never reached either way.
         """
         h = _fleet(temp_home, n=2, include_api_key_accounts=True)
-        _backup(h, 1)
+        _standby(h, 1)
         _api_key(h, 2)
         outcome, _ = _tick(h, [{"1": _u(20.0), "2": _u(10.0)}])
         assert outcome is TickOutcome.NO_ACTION
@@ -642,7 +642,7 @@ class TestFailbackTriggerScope:
         self, temp_home, strategy
     ):
         h = _fleet(temp_home, n=2, strategy=strategy)
-        _backup(h, 1)
+        _standby(h, 1)
         outcome, _ = _tick(h, [{"1": _u(20.0), "2": _u(10.0)}])
         assert outcome is TickOutcome.SWITCHED
         assert _triggers(h) == ["failback"]
@@ -658,7 +658,7 @@ class TestFailbackTriggerScope:
         from today's quiet `NO_ACTION`.
         """
         h = _fleet(temp_home, n=2)
-        _backup(h, 1)
+        _standby(h, 1)
         outcome, _ = _tick(h, [{"1": _u(20.0), "2": None}])
         assert outcome is TickOutcome.NO_ACTION
         assert _reasons(h) == ["failback-hold"]
@@ -679,7 +679,7 @@ class TestFailbackRefetchesBeforeCommitting:
 
     def _stage(self, temp_home):
         h = _fleet(temp_home, n=2)
-        _backup(h, 1)
+        _standby(h, 1)
         h.switcher.set_account_threshold("2", 85.0)
         h.engine = h._make_engine()
         return h
@@ -723,7 +723,7 @@ class TestFailbackRespectsCooldown:
 
     def test_i_the_tick_entry_cooldown_suppresses_failback(self, temp_home):
         h = _fleet(temp_home, n=2)
-        _backup(h, 1)
+        _standby(h, 1)
         h.engine._mutate_state(
             lambda s: s.update(lastSwitchAt=h.clock() - 1)
         )
@@ -736,7 +736,7 @@ class TestFailbackRespectsCooldown:
         """The mutant that adds `failback` only at branch row 1 passes (i)
         and fails here."""
         h = _fleet(temp_home)
-        _backup(h, 1)
+        _standby(h, 1)
         outcome, _ = _tick(h, [{
             "1": _u(20.0), "2": _u(10.0), "3": _u(10.0),
         }])
@@ -765,7 +765,7 @@ class TestFailbackKeepsTheLandingGate:
         self, temp_home
     ):
         h = _fleet(temp_home)
-        _backup(h, 1)
+        _standby(h, 1)
         for num in ("2", "3"):
             h.switcher.set_account_threshold(num, 85.0)
         h.engine = h._make_engine()
@@ -787,7 +787,7 @@ class TestFailbackKeepsTheLandingGate:
         unmodified source.
         """
         h = _fleet(temp_home)
-        _backup(h, 1)
+        _standby(h, 1)
         for num in ("2", "3"):
             h.switcher.set_account_threshold(num, 85.0)
         h.engine = h._make_engine()
@@ -817,7 +817,7 @@ class TestFailbackNeverFallsBackToAnApiKeyAccount:
 
     def _stage(self, temp_home):
         h = _fleet(temp_home, include_api_key_accounts=True)
-        _backup(h, 1)
+        _standby(h, 1)
         _api_key(h, 3)
         h.switcher.set_account_threshold("2", 85.0)
         h.engine = h._make_engine()
@@ -856,14 +856,14 @@ class TestFailbackSurvivesTheTargetLoop:
     AFTER the loop, never in place of it, so the quarantine writes survive.
     """
 
-    def _stage(self, temp_home, *, backup: bool, expires_at=None, n: int = 2):
+    def _stage(self, temp_home, *, standby: bool, expires_at=None, n: int = 2):
         h = EngineHarness(temp_home)
         for num in range(1, n + 1):
             h.seed(num, _EMAILS[num],
                    expires_at=None if num == 1 else expires_at)
         h.make_live(_EMAILS[1], 1)
-        if backup:
-            _backup(h, 1)
+        if standby:
+            _standby(h, 1)
         return h
 
     def _snapshot(self, n: int = 2, active: float = 20.0):
@@ -873,7 +873,7 @@ class TestFailbackSurvivesTheTargetLoop:
         return snap
 
     def test_a_a_live_session_on_the_only_primary_holds(self, temp_home):
-        h = self._stage(temp_home, backup=True,
+        h = self._stage(temp_home, standby=True,
                         expires_at=int(1_000_000.0 * 1000) + 3_600_000)
         with patch.object(
             h.switcher, "live_session_pids_for", return_value=[4242]
@@ -887,7 +887,7 @@ class TestFailbackSurvivesTheTargetLoop:
     def test_b_dead_credentials_hold_and_the_quarantine_survives(
         self, temp_home
     ):
-        h = self._stage(temp_home, backup=True, expires_at=1, n=3)
+        h = self._stage(temp_home, standby=True, expires_at=1, n=3)
         with patch(
             "claude_swap.autoswitch.oauth.try_refresh_oauth_credentials",
             return_value=oauth.RefreshOutcome(None, "invalid_grant"),
@@ -906,7 +906,7 @@ class TestFailbackSurvivesTheTargetLoop:
     def test_c_a_transient_refresh_failure_holds_without_an_error_event(
         self, temp_home
     ):
-        h = self._stage(temp_home, backup=True, expires_at=1)
+        h = self._stage(temp_home, standby=True, expires_at=1)
         with patch(
             "claude_swap.autoswitch.oauth.try_refresh_oauth_credentials",
             return_value=oauth.RefreshOutcome(None, "transient"),
@@ -922,7 +922,7 @@ class TestFailbackSurvivesTheTargetLoop:
     ):
         """The scope check: row 18 adds a `failback` arm, it does not remove
         the loop's exits."""
-        live = self._stage(temp_home, backup=False,
+        live = self._stage(temp_home, standby=False,
                            expires_at=int(1_000_000.0 * 1000) + 3_600_000)
         # `ACCOUNT_THRESHOLD_MIN` is 50, so the no-reserve control departs by
         # crossing 50 rather than by the failback predicate.
@@ -936,7 +936,7 @@ class TestFailbackSurvivesTheTargetLoop:
         assert "no-viable-target" in _reasons(live)
 
     def test_d_transient_without_a_reserve_still_errors(self, temp_home):
-        h = self._stage(temp_home, backup=False, expires_at=1)
+        h = self._stage(temp_home, standby=False, expires_at=1)
         h.switcher.set_account_threshold("1", 50.0)
         h.engine = h._make_engine()
         with patch(
@@ -948,12 +948,12 @@ class TestFailbackSurvivesTheTargetLoop:
         assert any(isinstance(e, ErrorEvent) for e in h.events)
 
 
-class TestTheActiveAccountCountsAsANonBackup:
+class TestTheActiveAccountCountsAsANonStandby:
     """AC-24, the half the original oracles could not see (review round 1, F-1).
 
-    AC-24 reads "a backup account is skipped while any non-backup qualifies",
-    and every oracle above supplies that non-backup as a *candidate*. But the
-    candidate list is built with `num != current`, so the one non-backup the
+    AC-24 reads "a standby account is skipped while any non-standby qualifies",
+    and every oracle above supplies that non-standby as a *candidate*. But the
+    candidate list is built with `num != current`, so the one non-standby the
     filter can never see is the account we are already sitting on. Under
     `consume-first` - the only trigger that departs an account which is still
     perfectly usable - a two-account fleet therefore fell through pass 1 (no
@@ -988,7 +988,7 @@ class TestTheActiveAccountCountsAsANonBackup:
         self, temp_home
     ):
         h = _fleet(temp_home, n=2, strategy="consume-first")
-        _backup(h, 2)
+        _standby(h, 2)
         outcome, _ = _tick(h, [self._reserve_resets_soonest(h)])
 
         assert outcome is TickOutcome.NO_ACTION
@@ -1002,13 +1002,13 @@ class TestTheActiveAccountCountsAsANonBackup:
         the fleet is not uncomparable - it is simply already where it should
         be."""
         h = _fleet(temp_home, n=2, strategy="consume-first")
-        _backup(h, 2)
+        _standby(h, 2)
         _tick(h, [self._reserve_resets_soonest(h)])
 
         assert _reasons(h) == ["already-consuming-soonest"]
 
     def test_without_the_mark_the_same_fleet_moves(self, temp_home):
-        """The identity half - the `backup` mark is the only thing that moved,
+        """The identity half - the `standby` mark is the only thing that moved,
         so the hold above is the filter working, not a fixture that never
         qualified."""
         h = _fleet(temp_home, n=2, strategy="consume-first")
@@ -1024,7 +1024,7 @@ class TestTheActiveAccountCountsAsANonBackup:
         (`failback`) on a *later* tick, so only a multi-tick oracle catches the
         ping-pong."""
         h = _fleet(temp_home, n=2, strategy="consume-first")
-        _backup(h, 2)
+        _standby(h, 2)
         for _ in range(4):
             _tick(h, [self._reserve_resets_soonest(h)])
             h.clock.advance(COOLDOWN + 1)
@@ -1040,7 +1040,7 @@ class TestTheActiveAccountCountsAsANonBackup:
         longer a usable primary, every other account IS at its limit, and the
         reserve is exactly what the user marked it for."""
         h = _fleet(temp_home, n=2)
-        _backup(h, 2)
+        _standby(h, 2)
         outcome, _ = _tick(h, [{"1": _usage(95.0), "2": _usage(10.0)}])
 
         assert outcome is TickOutcome.SWITCHED
@@ -1052,7 +1052,7 @@ class TestTheActiveAccountCountsAsANonBackup:
         fleet that merely *contains* a reserve keeps its ordinary
         consume-first departures."""
         h = _fleet(temp_home, n=3, strategy="consume-first")
-        _backup(h, 3)
+        _standby(h, 3)
         t = h.clock.now
         outcome, _ = _tick(h, [{
             "1": _u(30.0, seven_day_reset=t + 100_000),
@@ -1070,7 +1070,7 @@ class TestTheActiveAccountCountsAsANonBackup:
         premise is false and the trigger must fire exactly as MEU-04 shipped
         it."""
         h = _fleet(temp_home, n=2, strategy="consume-first")
-        _backup(h, 1)
+        _standby(h, 1)
         t = h.clock.now
         outcome, _ = _tick(h, [{
             "1": _u(20.0, seven_day_reset=t + 3_600),
