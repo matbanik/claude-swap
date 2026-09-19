@@ -108,9 +108,9 @@ def _pin(h: EngineHarness, **ranks: int) -> None:
         h.switcher.set_account_order(name.lstrip("a"), rank)
 
 
-def _backup(h: EngineHarness, *nums: int) -> None:
+def _standby(h: EngineHarness, *nums: int) -> None:
     for num in nums:
-        h.switcher.set_account_backup(str(num), True)
+        h.switcher.set_account_standby(str(num), True)
 
 
 def _api_key(h: EngineHarness, *nums: int) -> None:
@@ -207,7 +207,7 @@ class TestOrderResolvedOncePerTick:
     """AC-17 (i). `_resolve_orders()` runs once in `_tick_inner` and the map is
     threaded down as a parameter.
 
-    The oracle needs a tick that ranks **twice**. The backup two-pass is the
+    The oracle needs a tick that ranks **twice**. The standby two-pass is the
     deterministic way to get one: `_rank` runs pass 1 over the primaries and,
     finding nothing, re-enters `_one_pass` over the full pool
     (`autoswitch.py:1341-1346`). If `_rank_candidates` resolved the map itself
@@ -220,7 +220,7 @@ class TestOrderResolvedOncePerTick:
 
     def test_orders_are_resolved_once_though_ranking_runs_twice(self, temp_home):
         h = _fleet(temp_home)
-        _backup(h, 3, 4)
+        _standby(h, 3, 4)
         _pin(h, a2=1)
         real_resolve = h.engine._resolve_orders
         real_rank = h.engine._rank_candidates
@@ -239,14 +239,14 @@ class TestOrderResolvedOncePerTick:
                 "4": _u(4.0),    # reserve
             }])
         assert rank.call_count >= 2, (
-            "the fixture must reach the backup two-pass, or the oracle is vacuous"
+            "the fixture must reach the standby two-pass, or the oracle is vacuous"
         )
         assert resolve.call_count == 1
 
     def test_every_rank_call_receives_the_same_map_object(self, temp_home):
         """The other half of "resolved once": threaded, not re-derived."""
         h = _fleet(temp_home)
-        _backup(h, 3, 4)
+        _standby(h, 3, 4)
         _pin(h, a2=1)
         seen: list[object] = []
         real_rank = h.engine._rank_candidates
@@ -287,7 +287,7 @@ class TestRankCandidatesStaysPure:
             patch.object(h.switcher, "account_orders", side_effect=_boom),
             patch.object(h.switcher, "account_policies", side_effect=_boom),
             patch.object(
-                h.switcher, "backup_account_numbers", side_effect=_boom
+                h.switcher, "standby_account_numbers", side_effect=_boom
             ),
         ):
             ordered, _known, _reset = h.engine._rank_candidates(**kwargs)
@@ -663,17 +663,17 @@ class TestDefaultIdentityStructural:
 
 
 # ---------------------------------------------------------------------------
-# AC-22 - composition with `backup`: a rank must not defeat the reserve filter
+# AC-22 - composition with `standby`: a rank must not defeat the reserve filter
 # ---------------------------------------------------------------------------
 
 
-class TestCompositionWithBackup:
+class TestCompositionWithStandby:
     """AC-22 - **mutant M-3's oracle**.
 
     The reserve exclusion is a **two-pass filter** in the caller
     (`autoswitch.py:1341-1346`), not a sort key, precisely so that no ranking
     trick can promote a reserve while a primary is still usable. A pin is a
-    ranking trick. `order: 1` on a backup account must therefore lose to a
+    ranking trick. `order: 1` on a standby account must therefore lose to a
     strictly worse primary in pass 1, and only order the reserves among
     themselves in pass 2.
 
@@ -687,7 +687,7 @@ class TestCompositionWithBackup:
 
     def test_a_pinned_reserve_still_loses_to_a_worse_primary(self, temp_home):
         h = _fleet(temp_home, n=3)
-        _backup(h, 3)
+        _standby(h, 3)
         _pin(h, a3=1)
         outcome, _ = _tick(h, [{
             "1": _u(95.0),  # active, above the line
@@ -703,7 +703,7 @@ class TestCompositionWithBackup:
         """The positive half - pass 2 is where a reserve's rank is allowed to
         matter, and it does."""
         h = _fleet(temp_home)
-        _backup(h, 3, 4)
+        _standby(h, 3, 4)
         _pin(h, a4=1)
         outcome, _ = _tick(h, [{
             "1": _u(95.0),   # active
@@ -716,7 +716,7 @@ class TestCompositionWithBackup:
 
     def test_without_the_pin_pass_two_picks_the_better_reserve(self, temp_home):
         h = _fleet(temp_home)
-        _backup(h, 3, 4)
+        _standby(h, 3, 4)
         outcome, _ = _tick(h, [{
             "1": _u(95.0), "2": _u(100.0), "3": _u(3.0), "4": _u(5.0),
         }])
@@ -927,7 +927,7 @@ class TestApiKeyCandidatesArePreSorted:
         not promote a reserve here either."""
         h = _fleet(temp_home, include_api_key_accounts=True)
         _api_key(h, 2, 3)
-        _backup(h, 3)
+        _standby(h, 3)
         _pin(h, a3=1)
         outcome, _ = _tick(h, [{
             "1": _u(95.0), "2": _u(10.0), "3": _u(10.0), "4": _u(100.0),

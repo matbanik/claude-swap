@@ -133,11 +133,11 @@ class TestOrderReadTolerance(OrderStoreBase):
         `threshold` sitting in the same record."""
         s = self._fleet(temp_home)
         s.set_account_threshold("1", 85.0)
-        s.set_account_backup("1", True)
+        s.set_account_standby("1", True)
         self._write_raw_order(s, "1", "banana")
         data = s._get_sequence_data() or {}
         assert s._policy_from_data(data, "1") == AccountPolicy(
-            threshold=85.0, backup=True, order=None
+            threshold=85.0, standby=True, order=None
         )
 
     def test_a_corrupt_order_does_not_disturb_other_accounts(self, temp_home: Path):
@@ -362,18 +362,18 @@ class TestOrderSurvivesRenumber(OrderStoreBase):
         s.move_account("2", "5")
         assert s.account_orders() == {"5": 4}
 
-    def test_order_travels_with_threshold_and_backup(self, temp_home: Path):
+    def test_order_travels_with_threshold_and_standby(self, temp_home: Path):
         """All three policy keys are record-keyed, so all three move together."""
         s = self._fleet(temp_home, count=3)
         s.set_account_threshold("1", 85.0)
-        s.set_account_backup("1", True)
+        s.set_account_standby("1", True)
         s.set_account_order("1", 2)
 
         s.swap_accounts("1", "3")
 
         record = self._record(s, "3")
         assert record["threshold"] == pytest.approx(85.0)
-        assert record["backup"] is True
+        assert record["standby"] is True
         assert record["order"] == 2
 
 

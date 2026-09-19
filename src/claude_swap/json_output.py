@@ -270,8 +270,8 @@ def account_row(
     # byte-identical to those from before this feature existed.
     if policy.threshold is not None:
         row["threshold"] = policy.threshold
-    if policy.backup:
-        row["backup"] = True
+    if policy.standby:
+        row["standby"] = True
     if policy.order is not None:
         row["order"] = policy.order
     # Additive field: when the stored login records the expiry of its refresh

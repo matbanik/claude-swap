@@ -150,7 +150,7 @@ class TestAccountPolicy:
     def test_default_is_empty(self):
         policy = AccountPolicy()
         assert policy.threshold is None
-        assert policy.backup is False
+        assert policy.standby is False
 
     def test_two_defaults_compare_equal(self):
         """Equality is what makes the omit-when-default record convention testable.
@@ -161,7 +161,7 @@ class TestAccountPolicy:
         assert AccountPolicy() == AccountPolicy()
         assert AccountPolicy(threshold=85.0) == AccountPolicy(threshold=85.0)
         assert AccountPolicy(threshold=85.0) != AccountPolicy(threshold=90.0)
-        assert AccountPolicy(backup=True) != AccountPolicy()
+        assert AccountPolicy(standby=True) != AccountPolicy()
 
     def test_is_frozen(self):
         """`AccountSnapshot` is `frozen=True`; a mutable member would break that."""
@@ -169,7 +169,7 @@ class TestAccountPolicy:
         with pytest.raises(dataclasses.FrozenInstanceError):
             policy.threshold = 85.0  # type: ignore[misc]
         with pytest.raises(dataclasses.FrozenInstanceError):
-            policy.backup = True  # type: ignore[misc]
+            policy.standby = True  # type: ignore[misc]
 
     def test_is_hashable(self):
         """A frozen dataclass with no `eq=False` is hashable; pin it.
@@ -182,7 +182,7 @@ class TestAccountPolicy:
     def test_field_types_are_declared_as_specified(self):
         """A closed-world fence on the field set.
 
-        Written for PR 1 as ``{"threshold", "backup"}`` with the note that
+        Written for PR 1 as ``{"threshold", "standby"}`` with the note that
         ``order`` belonged to PR 2 and must not appear early. PR 2 (MEU-ORD-01,
         AC-5) is that event, so the fence moves rather than being deleted — its
         job is to make any *further* field an explicit decision, and PR 2's own
@@ -190,11 +190,11 @@ class TestAccountPolicy:
         other side.
         """
         fields = {f.name: f for f in dataclasses.fields(AccountPolicy)}
-        assert set(fields) == {"threshold", "backup", "order"}, (
+        assert set(fields) == {"threshold", "standby", "order"}, (
             "the field set is fixed; a new field is a deliberate, tested addition"
         )
         assert fields["threshold"].default is None
-        assert fields["backup"].default is False
+        assert fields["standby"].default is False
         assert fields["order"].default is None
 
 
@@ -206,7 +206,7 @@ class TestAccountSnapshotPolicyField:
         assert snapshot.policy == AccountPolicy()
 
     def test_policy_can_be_supplied(self):
-        policy = AccountPolicy(threshold=85.0, backup=True)
+        policy = AccountPolicy(threshold=85.0, standby=True)
         assert _snapshot(policy=policy).policy == policy
 
     def test_policy_is_last_so_positional_callers_are_unaffected(self):
@@ -220,7 +220,7 @@ class TestAccountSnapshotPolicyField:
         assert names.index("policy") > names.index("disabled")
 
     def test_snapshot_is_still_frozen_and_still_has_display_tag(self):
-        snapshot = _snapshot(policy=AccountPolicy(backup=True))
+        snapshot = _snapshot(policy=AccountPolicy(standby=True))
         with pytest.raises(dataclasses.FrozenInstanceError):
             snapshot.policy = AccountPolicy()  # type: ignore[misc]
         assert snapshot.display_tag == "Example Org"

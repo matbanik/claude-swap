@@ -3,7 +3,7 @@
 AC-39  `_policy_badges` appends `ord R` when the account is pinned, on both
        render paths, and an unpinned account renders byte-identically to its
        PR 1 render.
-AC-40  Badge order on the row is deterministic: `(backup)`, `th NN%`, `ord R`.
+AC-40  Badge order on the row is deterministic: `(standby)`, `th NN%`, `ord R`.
 AC-41  The TUI renders MEU-ORD-04's `failback-hold` reason wherever it already
        renders `NoSwitchEvent.reason`, and a fleet with no reserve still
        renders `below-threshold` exactly as before.
@@ -103,19 +103,19 @@ class TestUnpinnedRendersIdenticallyToPrOne:
 
 
 class TestBadgeOrderIsDeterministic:
-    """AC-40 — `(backup)`, then `th NN%`, then `ord R`, always."""
+    """AC-40 — `(standby)`, then `th NN%`, then `ord R`, always."""
 
-    ALL_THREE = dict(backup=True, threshold=82.5, order=3)
+    ALL_THREE = dict(standby=True, threshold=82.5, order=3)
 
     def test_the_card_renders_all_three_in_order(self):
         acc = with_policy(make_account(2, active=True, alias="dev"), **self.ALL_THREE)
         header = card(acc).splitlines()[0]
-        assert header.index("(backup)") < header.index("th 82.5%") < header.index("ord 3")
+        assert header.index("(standby)") < header.index("th 82.5%") < header.index("ord 3")
 
     def test_the_mini_row_renders_all_three_in_order(self):
         acc = with_policy(make_account(2, active=True, alias="dev"), **self.ALL_THREE)
         row = mini(acc)
-        assert row.index("(backup)") < row.index("th 82.5%") < row.index("ord 3")
+        assert row.index("(standby)") < row.index("th 82.5%") < row.index("ord 3")
 
     def test_the_exact_rendered_badge_run_is_pinned(self):
         """A substring-order check passes on a row that lost its separators.
@@ -124,14 +124,14 @@ class TestBadgeOrderIsDeterministic:
         and whose whole line is short enough to pin without a wall clock in it.
         """
         acc = with_policy(make_account(2, active=True, alias="dev"), **self.ALL_THREE)
-        assert "  (backup)  th 82.5%  ord 3" in mini(acc)
+        assert "  (standby)  th 82.5%  ord 3" in mini(acc)
 
     def test_order_still_sorts_last_when_the_threshold_is_absent(self):
         acc = with_policy(
-            make_account(2, active=True, alias="dev"), backup=True, order=3
+            make_account(2, active=True, alias="dev"), standby=True, order=3
         )
         row = mini(acc)
-        assert row.index("(backup)") < row.index("ord 3")
+        assert row.index("(standby)") < row.index("ord 3")
         assert "th " not in row
 
     def test_the_disabled_badge_still_precedes_them_all(self):
@@ -141,10 +141,10 @@ class TestBadgeOrderIsDeterministic:
         `_policy_badges` controls — which is exactly why it is worth pinning.
         """
         acc = with_policy(
-            make_account(3, disabled=True), backup=True, threshold=82.5, order=3
+            make_account(3, disabled=True), standby=True, threshold=82.5, order=3
         )
         row = mini(acc)
-        assert row.index("(disabled)") < row.index("(backup)") < row.index("ord 3")
+        assert row.index("(disabled)") < row.index("(standby)") < row.index("ord 3")
 
 
 class TestTheFailbackReasonReachesTheTui:

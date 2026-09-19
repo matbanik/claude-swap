@@ -487,7 +487,7 @@ class TestRankCandidatesStaysPure:
             "account_policies",
             "_get_sequence_data",
             "switchable_account_numbers",
-            "backup_account_numbers",
+            "standby_account_numbers",
         ):
             monkey = getattr(h.switcher, name, None)
             if monkey is not None:
