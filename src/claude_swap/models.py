@@ -117,9 +117,9 @@ class AccountPolicy:
         on one shared account no longer means taxing the whole fleet with a
         global cap set to the strictest member's.
 
-    ``backup``
+    ``standby``
         "Last man standing": held out of candidate selection while any
-        non-backup account can still be landed on, and offered only when none
+        non-standby account can still be landed on, and offered only when none
         can. Orthogonal to ``disabled``, which removes an account from
         auto-rotation entirely; ``disabled`` is applied first and wins.
 
@@ -128,7 +128,7 @@ class AccountPolicy:
     """
 
     threshold: float | None = None
-    backup: bool = False
+    standby: bool = False
 
 
 class Platform(Enum):

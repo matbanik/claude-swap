@@ -364,7 +364,7 @@ class PollEvent(AutoSwitchEvent):
 class SwitchEvent(AutoSwitchEvent):
     kind: ClassVar[str] = "switch"
     trigger: str  # "proactive" | "at-limit" | "failover" | "consume-first"
-    #                | "failback" — a backup account handing back to a primary
+    #                | "failback" — a standby account handing back to a primary
     from_ref: dict | None
     to_ref: dict | None
     warnings: list[str] = field(default_factory=list)
@@ -1096,14 +1096,14 @@ class AutoSwitchEngine:
             utilization = 100.0 - active_headroom
             if utilization < thresholds[current]:
                 if self._failback_available(current, quarantined):
-                    # A backup ("last man standing") account is only supposed
+                    # A standby ("last man standing") account is only supposed
                     # to carry the fleet while nothing else can. It was taken
                     # BECAUSE every primary was out, so waiting for it to
                     # cross its own threshold before handing back is the
                     # wrong test entirely — the reserve may sit at 20% for a
                     # week while a primary's window rolls over on the hour.
                     #
-                    # The predicate is deliberately store-only (backup flag,
+                    # The predicate is deliberately store-only (standby flag,
                     # disabled, kind, quarantine) so it is decidable HERE,
                     # before any usage ranking: it answers "should we be
                     # looking to leave?", never "where should we go?". The
@@ -1207,7 +1207,7 @@ class AutoSwitchEngine:
         # whole fleet, and a reserve holding quota means the fleet is not
         # exhausted. The reserve is filtered out of the *ranking* instead —
         # inside `_rank`, so both consume-first commit phases inherit it.
-        backups = set(self.switcher.backup_account_numbers())
+        standbys = set(self.switcher.standby_account_numbers())
         # The no-return bar itself lives in `_rank` below: it is a statement
         # about the CHOICE, so it belongs where the choice is made rather than
         # in this census of what exists. See `_no_return_account` for the
@@ -1336,9 +1336,9 @@ class AutoSwitchEngine:
             #
             # Pass 2 restores the reserve when the primaries yield nothing —
             # the "last man standing" contract. It is skipped entirely when no
-            # account is marked backup, so an unconfigured fleet ranks exactly
+            # account is marked standby, so an unconfigured fleet ranks exactly
             # once, on exactly today's list.
-            primaries = [n for n in kw["oauth_candidates"] if n not in backups]
+            primaries = [n for n in kw["oauth_candidates"] if n not in standbys]
             if len(primaries) != len(kw["oauth_candidates"]):
                 first = _one_pass(primaries)
                 if first[0]:
@@ -1391,9 +1391,9 @@ class AutoSwitchEngine:
                 thresholds=thresholds,
             )
 
-        if trigger == "consume-first" and current not in backups and ordered:
-            # The active account is a non-backup too — and it is the ONE
-            # non-backup `_rank`'s pass 1 can never see, because the candidate
+        if trigger == "consume-first" and current not in standbys and ordered:
+            # The active account is a non-standby too — and it is the ONE
+            # non-standby `_rank`'s pass 1 can never see, because the candidate
             # list is built with `num != current`. On a fleet whose only other
             # OAuth account is the reserve, pass 1 therefore ranks an empty
             # pool, falls through to pass 2, and burns the reserve while a
@@ -1405,7 +1405,7 @@ class AutoSwitchEngine:
             # departs a still-usable account: under `proactive`/`at-limit`/
             # `failover` the active primary is by definition NOT usable, which
             # is precisely when promoting the reserve is right. `current not in
-            # backups` excludes `failback`, whose active account IS the reserve.
+            # standbys` excludes `failback`, whose active account IS the reserve.
             #
             # Applied HERE rather than inside `_rank` on purpose. The reserve's
             # provisional rank is what arms the two-phase commit's forced
@@ -1415,11 +1415,11 @@ class AutoSwitchEngine:
             # after phase 2 keeps the escalation and rejects only the commit.
             #
             # `any_known` is deliberately left as `_rank` reported it: a
-            # `backups` entry in `ordered` can only have come from the
+            # `standbys` entry in `ordered` can only have come from the
             # full-pool pass, so the census still sees the reserve and the
             # empty list below lands on the quiet `already-consuming-soonest`
             # hold rather than a `no-comparison` BLOCK.
-            ordered = [num for num in ordered if num not in backups]
+            ordered = [num for num in ordered if num not in standbys]
 
         def _failback_hold() -> TickOutcome:
             """The failback tick found nowhere better; hold exactly as today.
@@ -1456,7 +1456,7 @@ class AutoSwitchEngine:
             # expensive thing in the fleet. The same two-pass filter applies
             # here, so a reserve that happens to be an API-key account is the
             # last thing reached rather than the first.
-            primary_api_keys = [n for n in api_key_candidates if n not in backups]
+            primary_api_keys = [n for n in api_key_candidates if n not in standbys]
             ordered = primary_api_keys or api_key_candidates
 
         if not ordered:
@@ -1635,25 +1635,25 @@ class AutoSwitchEngine:
     def _failback_available(self, current: str, quarantined: set[str]) -> bool:
         """Is the active account a reserve with a usable primary to hand back to?
 
-        Store-only by design — backup flag, disabled, kind, quarantine — so it
+        Store-only by design — standby flag, disabled, kind, quarantine — so it
         is decidable at the departure gate, before any usage is ranked. It
         answers "should we be looking to leave?"; the ranking answers "where
         to?", and every landing gate downstream still applies.
 
         The OAuth clause is load-bearing rather than tidy. Without it, a fleet
-        whose only non-backup peer is an API-key account classifies as
+        whose only non-standby peer is an API-key account classifies as
         `failback`, both candidate lists come back empty, and the tick reaches
         the generic `no-candidates` exit and returns BLOCKED — where today it
         returns a quiet NO_ACTION. `include_api_key_accounts` widens the
         candidate list, never this predicate: metered credit is not somewhere
         a quiet reserve should hand back to.
         """
-        backups = set(self.switcher.backup_account_numbers())
-        if current not in backups:
+        standbys = set(self.switcher.standby_account_numbers())
+        if current not in standbys:
             return False
         return any(
             num != current
-            and num not in backups
+            and num not in standbys
             and num not in quarantined
             and self.switcher.account_kind_for(num) != "api_key"
             for num in self.switcher.switchable_account_numbers()
