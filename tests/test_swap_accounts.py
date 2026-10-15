@@ -1,5 +1,6 @@
 """Tests for `cswap swap` (ClaudeAccountSwitcher.swap_accounts)."""
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -290,6 +291,27 @@ class TestSwapAccounts:
                 switcher._write_json(switcher.sequence_file, {"x": 1})
 
         assert switcher.sequence_file.read_text(encoding="utf-8") == before
+
+    def test_write_json_replaces_target_when_rename_cannot_overwrite(
+        self, temp_home: Path, sample_sequence_data: dict
+    ):
+        """On Windows os.rename refuses an existing target and shutil.move
+        falls back to copying into it in place, so readers can see a
+        truncated file. The write must replace the target file instead."""
+        switcher = ClaudeAccountSwitcher()
+        self._write(switcher, sample_sequence_data)
+        before_ino = switcher.sequence_file.stat().st_ino
+
+        def windows_rename(src, dst, *args, **kwargs):
+            raise FileExistsError(f"cannot rename onto existing {dst}")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("claude_swap.switcher.os.rename", windows_rename)
+            switcher._write_json(switcher.sequence_file, {"x": 1})
+
+        assert json.loads(switcher.sequence_file.read_text(encoding="utf-8")) == {"x": 1}
+        assert switcher.sequence_file.stat().st_ino != before_ino
+        assert not list(switcher.sequence_file.parent.glob("*.tmp"))
 
     def test_swap_same_email_one_sided_clears_destination(
         self, temp_home: Path, sample_sequence_data_with_org: dict

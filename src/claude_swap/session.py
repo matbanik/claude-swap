@@ -348,8 +348,15 @@ def _keychain_services(config_dir: str, override: str | None = None) -> list[str
     the link's name would miss every rotation claude wrote under the
     target's and serve the plaintext seed left behind, which is how a leased
     profile's usage silently froze at the last pre-rotation measurement. The
-    profile's own name is tried first, then the target's. ``override`` names
-    the unsuffixed default-profile item and stands alone.
+    profile's own name is tried first, then the target's. A relative target
+    is joined onto the link's parent and tried in two spellings, likeliest
+    first: the lexical form with ``..`` collapsed (``/x/space``, what a tool
+    launching at the target usually exports), offered only when it names the
+    link's own directory — under a parent that is itself a symlink elsewhere
+    it can name an unrelated directory with its own entry — and then the raw
+    join (``/x/sessions/../space``, what ``$(dirname link)/$(readlink link)``
+    exports). ``override`` names the unsuffixed default-profile item and
+    stands alone.
     """
     if override is not None:
         return [override]
@@ -358,9 +365,17 @@ def _keychain_services(config_dir: str, override: str | None = None) -> list[str
         target = os.readlink(config_dir)
     except OSError:
         return services
-    if not os.path.isabs(target):
-        target = os.path.join(os.path.dirname(config_dir), target)
-    services.append(keychain_service_name(target))
+    if os.path.isabs(target):
+        services.append(keychain_service_name(target))
+        return services
+    raw = os.path.join(os.path.dirname(config_dir), target)
+    lexical = os.path.normpath(raw)
+    try:
+        if lexical != raw and os.path.samefile(lexical, raw):
+            services.append(keychain_service_name(lexical))
+    except OSError:
+        pass  # nothing at the lexical path: not a spelling of this directory
+    services.append(keychain_service_name(raw))
     return services
 
 
@@ -402,7 +417,11 @@ def read_config_dir_credentials(
     The seed may predate an in-profile ``/login``, and capturing it would file
     one account's email against another's token — the very mismatch the capture
     path exists to prevent. An *absent* entry (rc 44) still falls back either
-    way: absence is claude's own signal to read the file.
+    way: absence is claude's own signal to read the file. For a symlinked
+    profile that fallback includes the target's entry under both modes, on
+    purpose: it is the newest generation claude wrote for that directory,
+    and the seed it would otherwise capture is the one claude stopped
+    updating when it first wrote the keychain.
     """
     directory = Path(config_dir)
     if not directory.is_dir():
@@ -467,7 +486,10 @@ def session_identity_drifted(session_dir: Path, email: str, org_uuid: str) -> bo
     ``_is_session_valid``: the email must match, the org only when both sides
     have a value. An unreadable identity is NOT drift — missing metadata
     degrades to trusting the profile (its token family is normally the slot's
-    freshest) rather than abandoning it over a broken ``.claude.json``.
+    freshest) rather than abandoning it over a broken ``.claude.json``. That
+    is a read-side policy: ``_adopt_session_credential``, which writes the
+    profile's credential into the backup, requires ``read_session_identity``
+    to succeed on top of this.
     """
     identity = read_session_identity(session_dir)
     if identity is None:
